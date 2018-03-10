@@ -1,49 +1,134 @@
-#version 150 core
+#version 410 core
 
 out vec4 color;
 
 // uniforms
-uniform uint max_iter;
-uniform float screen_x;
-uniform float screen_y;
-uniform float offset_x;
-uniform float offset_y;
-uniform vec2 start_z;
+uniform dvec2 start_z;
+uniform int max_iter;
+uniform vec2 screen_size;
+uniform float zoom;
+uniform dvec2 center;
+uniform int mode;
+uniform int color_mode;
 
-vec4 colormap(float x);
+vec4 colormap_1(float x);
+vec4 colormap_ocean(float x);
 
 void main() {
 
-  vec2 c = vec2((gl_FragCoord.x / screen_x) * 4.0 + offset_x, gl_FragCoord.y / screen_x * 4.0 + offset_y);
+  float zoom_factor = 2 / zoom;
+  float max_screen_size = max(screen_size.x, screen_size.y);
 
-  // vec2 z = c;
-  // c = start_z;
-  // float i;
-  // for (i = 0; i < max_iter; i++) {
-  //   z = vec2(pow(z.x, 2) - pow(z.y, 2), 2 * z.x * z.y) + c;
-  //   if(length(z) > 2.0) {
-  //     break;
-  //   }
-  // }
-  vec2 z = start_z;
+  double offset_x = 0.0;
+  double offset_y = 0.0;
+  if (screen_size.x == max_screen_size) {
+    offset_y = (screen_size.x - screen_size.y) / 2;
+  } else {
+    offset_x = (screen_size.y - screen_size.x) / 2;
+  }
+  double x = ((gl_FragCoord.x + offset_x) / max_screen_size)  * (2 * zoom_factor) + center.x - zoom_factor;
+  double y = ((gl_FragCoord.y + offset_y) / max_screen_size) * (2 * zoom_factor) + center.y - zoom_factor;
+
+  dvec2 coord = dvec2(x, y);
   float i;
-  for (i = 0; i < max_iter; i++) {
-    z = vec2(pow(z.x, 2) - pow(z.y, 2), 2 * z.x * z.y) + c;
-    if(length(z) > 2.0) {
-      break;
+  dvec2 z;
+  if (mode == 0) { // mandelbrot
+    dvec2 c = coord;
+    z = start_z;
+
+    double zx_square = z.x * z.x;
+    double zy_square = z.y * z.y;
+
+    int p = 0;
+    int ptot = 2;
+    dvec2 period;
+    for (i = 0; i < max_iter; i++) {
+      if (p == ptot) {
+        ptot += ptot;
+        period = z;
+      }
+      p++;
+      z.y = z.x * z.y;
+      z.y += z.y; // zi * 2
+      z.x = zx_square - zy_square;
+      z += c;
+      zx_square = z.x * z.x;
+      zy_square = z.y * z.y;
+      if (zx_square + zy_square > 4.0) {
+        break;
+      }
+
+      if (period == z) {
+        i = max_iter;
+        break;
+      }
+    }
+  // float i;
+  // vec2 z;
+  // if (mode == 0) { // mandelbrot
+  //   vec2 c = coord;
+  //   z = start_z;
+
+  //   float zx_square = z.x * z.x;
+  //   float zy_square = z.y * z.y;
+
+  //   int p = 0;
+  //   int ptot = 2;
+  //   vec2 period;
+  //   for (i = 0; i < max_iter; i++) {
+  //     if (p == ptot) {
+  //       ptot += ptot;
+  //       period = z;
+  //     }
+  //     p++;
+  //     z.y = z.x * z.y;
+  //     z.y += z.y; // zi * 2
+  //     z.x = zx_square - zy_square;
+  //     z += c;
+  //     zx_square = z.x * z.x;
+  //     zy_square = z.y * z.y;
+  //     if (zx_square + zy_square > 4.0) {
+  //       break;
+  //     }
+
+  //     if (period == z) {
+  //       i = max_iter;
+  //       break;
+  //     }
+  //   }
+  } else { // julia
+    dvec2 c = start_z;
+    z = coord;
+
+    double zx_square = z.x * z.x;
+    double zy_square = z.y * z.y;
+    for (i = 0; i < max_iter; i++) {
+      z.y = z.x * z.y;
+      z.y += z.y; // zi * 2
+      z.x = zx_square - zy_square;
+      z += c;
+      zx_square = z.x * z.x;
+      zy_square = z.y * z.y;
+      if(length(z) > 2.0) {
+        break;
+      }
     }
   }
 
-  if(i == max_iter) {
+  if (i == max_iter) {
     color = vec4(0.0, 0.0, 0.0, 1.0);
   } else {
-    float val = (i - log(log(length(z)) / log(2.0))) / float(max_iter);
-    color = colormap(val);
+    float val = sin(0.016 * (i - log(log(float(length(z))) / log(2.0))));
+    if (color_mode == 0) {
+      color = colormap_1(val);
+    } else if (color_mode == 1) {
+      color = colormap_ocean(val);
+    }
   }
 }
 
 // color map
-float colormap_red(float x) {
+float colormap_red_1(float x) {
 	if (x < 0.0906416957946237) {
 		return -1.48766695652174E+03 * x + 1.65896666666667E+02;
 	} else if (x < 0.181137969063194) {
@@ -69,7 +154,7 @@ float colormap_red(float x) {
 	}
 }
 
-float colormap_green(float x) {
+float colormap_green_1(float x) {
 	if (x < 0.09069203671589791) {
 		return -9.49076521739127E+02 * x + 2.05970000000000E+02;
 	} else if (x < 0.1811205395903491) {
@@ -93,7 +178,7 @@ float colormap_green(float x) {
 	}
 }
 
-float colormap_blue(float x) {
+float colormap_blue_1(float x) {
 	if (x < 0.1835817221386023) {
 		return -4.93278367346940E+02 * x + 2.25853877551021E+02;
 	} else if (x < 0.2718482976477959) {
@@ -117,9 +202,75 @@ float colormap_blue(float x) {
 	}
 }
 
-vec4 colormap(float x) {
-	float r = clamp(colormap_red(x) / 255.0, 0.0, 1.0);
-	float g = clamp(colormap_green(x) / 255.0, 0.0, 1.0);
-	float b = clamp(colormap_blue(x) / 255.0, 0.0, 1.0);
+vec4 colormap_1(float x) {
+	float r = clamp(colormap_red_1(x) / 255.0, 0.0, 1.0);
+	float g = clamp(colormap_green_1(x) / 255.0, 0.0, 1.0);
+	float b = clamp(colormap_blue_1(x) / 255.0, 0.0, 1.0);
 	return vec4(r, g, b, 1.0);
+}
+
+float colormap_red_ocean(float x) {
+	if (x < 0.84121424085) {
+		const float pi = 3.141592653589793238462643383279502884197169399;
+		const float a = 92.39421034238549;
+		const float b = 88.02925388837211;
+		const float c = 0.5467741159150409;
+		const float d = 0.03040219113949284;
+		return a * sin(2.0 * pi / c * (x - d)) + b;
+	} else {
+		return 105.0;
+	}
+}
+
+float colormap_green_ocean(float x) {
+	if (x < 0.84121424085) {
+		const float pi = 3.141592653589793238462643383279502884197169399;
+		const float a = 92.44399971120093;
+		const float b = 22.7616696017667;
+		const float c = 0.3971750420482239;
+		const float d = 0.1428144080827581;
+		const float e = 203.7220396611977;
+		const float f = 49.51517183258432;
+		float v = (a * x + b) * sin(2.0 * pi / c * (x + d)) + (e * x + f);
+		if (v > 255.0) {
+			return 255.0 - (v - 255.0);
+		} else {
+			return v;
+		}
+	} else {
+		return 246.0;
+	}
+}
+
+float colormap_blue_ocean(float x) {
+	if (x < 0.84121424085) {
+		const float pi = 3.141592653589793238462643383279502884197169399;
+		const float a = 251.0868719483008;
+		const float b = 0.5472498585835275;
+		const float c = 0.02985857858149428;
+		const float d = 225.9495771701237;
+		float v = a * sin(2.0 * pi / b * (x - c)) + d;
+		if (v > 255.0) {
+			return 255.0 - (v - 255.0);
+		} else if (v < 0.0) {
+			return -v;
+		} else {
+			return v;
+		}
+	} else {
+		return 234.0;
+	}
+}
+
+// R1 - 105 = 0
+// => 0.8344881408181015
+
+// B1 - 234 = 0
+// => 0.847940340889657
+
+vec4 colormap_ocean(float x) {
+    float r = clamp(colormap_red_ocean(x) / 255.0, 0.0, 1.0);
+    float g = clamp(colormap_green_ocean(x) / 255.0, 0.0, 1.0);
+    float b = clamp(colormap_blue_1(x) / 255.0, 0.0, 1.0);
+    return vec4(r, g, b, 1.0);
 }
